@@ -1,0 +1,43 @@
+configuration:
+  mqtt_host:
+    name: MQTT Broker Host
+    description: "IP or hostname of the MQTT broker. Leave empty to auto-detect from HA."
+  mqtt_port:
+    name: MQTT Broker Port
+    description: "MQTT broker port (default 1883)"
+  mqtt_username:
+    name: MQTT Username
+    description: "MQTT broker username"
+  mqtt_password:
+    name: MQTT Password
+    description: "MQTT broker password"
+  evse_topics:
+    name: OpenEVSE MQTT Base Topics
+    description: "Base MQTT topic for each OpenEVSE station (e.g., openevse/station1)"
+  pv_grid_export_topic:
+    name: Grid Export Power Topic
+    description: "MQTT topic publishing grid export power in watts (positive = export/surplus)"
+  total_current_limit:
+    name: Total Current Limit (A)
+    description: "Maximum combined current across all stations (supply cable limit)"
+  voltage:
+    name: Grid Voltage (V)
+    description: "Grid voltage for power/current conversion"
+  hysteresis_threshold:
+    name: Hysteresis Threshold (A)
+    description: "Minimum current above 6A needed to resume a paused station"
+  hysteresis_delay:
+    name: Hysteresis Delay (s)
+    description: "Seconds a station must be below minimum before pausing"
+  ramp_up_delay:
+    name: Ramp-Up Delay (s)
+    description: "Minimum seconds between current increases per station"
+  measurement_interval:
+    name: Measurement Interval (s)
+    description: "Seconds between allocation cycles"
+  initial_mode:
+    name: Initial Operation Mode
+    description: "pv_only = only PV surplus, pv_plus_grid = full capacity with PV priority"
+  ha_discovery_prefix:
+    name: HA Discovery Prefix
+    description: "MQTT discovery prefix for Home Assistant (default: homeassistant)"
