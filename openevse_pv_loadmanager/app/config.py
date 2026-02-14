@@ -27,6 +27,8 @@ class AppConfig:
     """Application configuration."""
 
     stations: list[StationConfig] = field(default_factory=list)
+    enable_charging_entity: str = "switch.openevse_pv_load_manager_enable_charging"
+    mode_entity: str = "switch.openevse_pv_load_manager_pv_load_manager_mode"
     pv_sensor_entity_id: str = "sensor.grid_import_power"
     total_current_limit: int = DEFAULT_TOTAL_CURRENT_LIMIT
     voltage: int = DEFAULT_VOLTAGE
@@ -34,7 +36,6 @@ class AppConfig:
     hysteresis_delay: float = DEFAULT_HYSTERESIS_DELAY
     ramp_up_delay: float = DEFAULT_RAMP_UP_DELAY
     measurement_interval: float = DEFAULT_MEASUREMENT_INTERVAL
-    initial_mode: str = "pv_plus_grid"
 
 
 def load_config() -> AppConfig:
@@ -71,6 +72,10 @@ def _apply_options(config: AppConfig, options: dict) -> None:
                 vehicle_connected_entity=s["vehicle_connected_entity"],
             ))
 
+    if options.get("enable_charging_entity"):
+        config.enable_charging_entity = options["enable_charging_entity"]
+    if options.get("mode_entity"):
+        config.mode_entity = options["mode_entity"]
     if options.get("pv_sensor_entity_id"):
         config.pv_sensor_entity_id = options["pv_sensor_entity_id"]
     if options.get("total_current_limit"):
@@ -85,5 +90,3 @@ def _apply_options(config: AppConfig, options: dict) -> None:
         config.ramp_up_delay = float(options["ramp_up_delay"])
     if options.get("measurement_interval") is not None:
         config.measurement_interval = float(options["measurement_interval"])
-    if options.get("initial_mode"):
-        config.initial_mode = options["initial_mode"]

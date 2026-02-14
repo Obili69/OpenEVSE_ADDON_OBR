@@ -55,7 +55,7 @@ class LoadManager:
         self._ha = ha
         self._persistence = persistence
 
-        self.mode = OperationMode(config.initial_mode)
+        self.mode = OperationMode.PV_PLUS_GRID  # Default, overridden by mode_entity
         self._hysteresis_threshold = config.hysteresis_threshold
         self._hysteresis_delay = config.hysteresis_delay
         self._ramp_up_delay = config.ramp_up_delay
@@ -68,6 +68,8 @@ class LoadManager:
 
         # PV data
         self._pv = PVData()
+
+        self._enabled = False  # Charging disabled by default
 
         # Per-station tracking
         self._last_allocations: dict[int, float] = {}
@@ -93,6 +95,36 @@ class LoadManager:
 
         while True:
             try:
+                # Check enable switch
+                enable_state = await self._ha.get_state(
+                    self._config.enable_charging_entity
+                )
+                was_enabled = self._enabled
+                self._enabled = enable_state is not None and enable_state.lower() == "on"
+
+                if not self._enabled:
+                    if was_enabled:
+                        logger.info("Charging DISABLED via %s", self._config.enable_charging_entity)
+                        await self._disable_all_stations()
+                        self._last_sent_setpoint.clear()
+                    await asyncio.sleep(self._config.measurement_interval)
+                    continue
+
+                if self._enabled and not was_enabled:
+                    logger.info("Charging ENABLED via %s", self._config.enable_charging_entity)
+
+                # Check mode switch (ON=PV+Grid, OFF=PV-Only)
+                mode_state = await self._ha.get_state(self._config.mode_entity)
+                if mode_state is not None:
+                    new_mode = (
+                        OperationMode.PV_PLUS_GRID
+                        if mode_state.lower() == "on"
+                        else OperationMode.PV_ONLY
+                    )
+                    if new_mode != self.mode:
+                        logger.info("Mode changed: %s -> %s", self.mode.value, new_mode.value)
+                        self.mode = new_mode
+
                 await self._poll_all()
                 result = self.compute_allocations()
                 await self._apply_allocations(result)
@@ -121,13 +153,10 @@ class LoadManager:
                     status_str.lower(), StationState.OFFLINE
                 )
 
-            # Read vehicle connected
+            # Read vehicle connected (binary_sensor: "on" / "off")
             connected_str = await self._ha.get_state(sc.vehicle_connected_entity)
             if connected_str is not None:
-                # OpenEVSE reports "Connected" or "Not Connected" (or similar)
-                station.vehicle_connected = connected_str.lower() in (
-                    "connected", "plugged in", "true", "yes", "1",
-                )
+                station.vehicle_connected = connected_str.lower() == "on"
 
         # Poll PV sensor
         pv_raw = await self._ha.get_float(self._config.pv_sensor_entity_id)
@@ -317,6 +346,12 @@ class LoadManager:
                 self._config.total_current_limit,
                 result.mode.value,
             )
+
+    async def _disable_all_stations(self) -> None:
+        """Disable charging on all stations."""
+        for sc in self._config.stations:
+            await self._ha.set_select(sc.override_state_entity, "disabled")
+            logger.info("Station %s: DISABLED", sc.name)
 
     async def clear_all_overrides(self) -> None:
         """Clear overrides on all stations (shutdown cleanup)."""

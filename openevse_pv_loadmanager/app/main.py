@@ -26,10 +26,9 @@ async def main() -> None:
 
     config = load_config()
     logger.info(
-        "Config: %d stations, %dA limit, mode=%s, interval=%ds",
+        "Config: %d stations, %dA limit, interval=%ds",
         len(config.stations),
         config.total_current_limit,
-        config.initial_mode,
         config.measurement_interval,
     )
 
