@@ -1,5 +1,5 @@
 name: "OpenEVSE PV Load Manager"
-version: "2.2.3"
+version: "2.2.4"
 slug: openevse_pv_loadmanager
 description: "PV-aware load management for up to 3 OpenEVSE charging stations with 32A supply limit"
 url: "https://github.com/Obili69/OpenEVSE_ADDON_OBR"

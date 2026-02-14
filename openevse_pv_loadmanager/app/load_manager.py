@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 # Map OpenEVSE charging status strings to StationState
 STATUS_MAP: dict[str, StationState] = {
+    "active": StationState.IDLE,
     "charging": StationState.CHARGING,
     "sleeping": StationState.IDLE,
     "disabled": StationState.PAUSED,
@@ -290,13 +291,23 @@ class LoadManager:
             new_alloc = allocations[sid]
             old_alloc = self._last_allocations.get(sid, 0)
 
-            if new_alloc > old_alloc:
+            if new_alloc > old_alloc and old_alloc > 0:
+                # Only ramp-limit increases after the first allocation
                 last_ramp = self._last_ramp_up_time.get(sid, 0)
                 if now - last_ramp < self._ramp_up_delay:
                     allocations[sid] = old_alloc
                 else:
                     allocations[sid] = min(new_alloc, old_alloc + MAX_RAMP_UP_STEP)
                     self._last_ramp_up_time[sid] = now
+
+        # Per-station debug logging
+        for station in active_stations:
+            sid = station.station_id
+            logger.debug(
+                "  %s: alloc=%.1fA actual=%.1fA state=%s charging=%s",
+                station.name, allocations[sid], station.actual_current,
+                station.state.value, station.is_charging,
+            )
 
         # Update tracking
         total_allocated = sum(allocations.values())
