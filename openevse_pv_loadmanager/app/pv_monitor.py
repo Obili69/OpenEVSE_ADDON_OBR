@@ -1,56 +1,87 @@
-"""PV Monitor: solar power tracking and cloud detection."""
+"""PV Monitor: solar power tracking via HA Supervisor API and cloud detection."""
 
 from __future__ import annotations
 
 import logging
+import os
 import statistics
 import time
+
+import aiohttp
 
 from .config import AppConfig
 from .const import (
     CLOUD_DETECTION_VARIANCE_THRESHOLD,
     CLOUD_DETECTION_WINDOW,
+    HA_SUPERVISOR_API_URL,
     PV_STALE_TIMEOUT,
 )
 from .models import PVData, PVSample
-from .mqtt_client import MQTTClient
 
 logger = logging.getLogger(__name__)
 
 
 class PVMonitor:
-    """Monitors PV grid export power and detects cloud transients."""
+    """Monitors PV power by polling a HA sensor via the Supervisor API."""
 
-    def __init__(self, config: AppConfig, mqtt: MQTTClient) -> None:
+    def __init__(self, config: AppConfig) -> None:
         self._config = config
-        self._mqtt = mqtt
+        self._entity_id = config.pv_sensor_entity_id
+        self._supervisor_token = os.environ.get("SUPERVISOR_TOKEN", "")
         self.data = PVData()
 
-    def setup_subscriptions(self) -> None:
-        """Register MQTT subscription for grid export power."""
-        self._mqtt.register(
-            self._config.pv_grid_export_topic,
-            self._on_grid_export,
-        )
+        if not self._supervisor_token:
+            logger.warning("SUPERVISOR_TOKEN not set - HA API access will fail")
 
-    async def _on_grid_export(self, topic: str, payload: str) -> None:
-        """Handle grid export power update.
+    async def poll(self) -> None:
+        """Poll the HA sensor for current grid import power.
 
-        Positive value = exporting to grid (surplus available).
-        Negative value = importing from grid (no surplus).
+        grid_import_power interpretation:
+        - Positive = importing from grid (no surplus)
+        - Negative = exporting to grid (surplus available)
+
+        Surplus watts = abs(min(0, import_value))
         """
+        url = f"{HA_SUPERVISOR_API_URL}/states/{self._entity_id}"
+        headers = {
+            "Authorization": f"Bearer {self._supervisor_token}",
+            "Content-Type": "application/json",
+        }
+
         try:
-            power_w = float(payload)
-        except ValueError:
-            logger.warning("Invalid grid export power value: %s", payload)
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status != 200:
+                        logger.warning(
+                            "HA API returned %d for %s", resp.status, self._entity_id
+                        )
+                        return
+
+                    data = await resp.json()
+                    state_value = data.get("state")
+
+                    if state_value in ("unavailable", "unknown", None):
+                        logger.warning("Sensor %s is %s", self._entity_id, state_value)
+                        return
+
+                    import_power_w = float(state_value)
+
+        except (aiohttp.ClientError, TimeoutError) as e:
+            logger.warning("HA API request failed: %s", e)
+            return
+        except (ValueError, TypeError) as e:
+            logger.warning("Invalid sensor value from %s: %s", self._entity_id, e)
             return
 
         now = time.time()
-        self.data.grid_export_power_w = power_w
+
+        # Convert import to surplus: negative import = export = surplus
+        surplus_w = abs(min(0.0, import_power_w))
+        self.data.grid_export_power_w = surplus_w
         self.data.last_update = now
 
         # Add to history for cloud detection
-        self.data.history.append(PVSample(value=power_w, timestamp=now))
+        self.data.history.append(PVSample(value=surplus_w, timestamp=now))
 
         # Trim old samples
         cutoff = now - CLOUD_DETECTION_WINDOW
@@ -68,9 +99,7 @@ class PVMonitor:
         if self.is_cloud_detected():
             return self.get_conservative_current()
 
-        # Positive export = surplus available
-        surplus_w = max(0.0, self.data.grid_export_power_w)
-        return surplus_w / self._config.voltage
+        return self.data.grid_export_power_w / self._config.voltage
 
     def is_stale(self) -> bool:
         """Check if PV data is too old to be reliable."""
@@ -79,10 +108,7 @@ class PVMonitor:
         return (time.time() - self.data.last_update) > PV_STALE_TIMEOUT
 
     def is_cloud_detected(self) -> bool:
-        """Detect fast PV fluctuations indicating cloud cover.
-
-        Uses variance of recent power readings over the detection window.
-        """
+        """Detect fast PV fluctuations indicating cloud cover."""
         if len(self.data.history) < 3:
             return False
 
@@ -94,27 +120,25 @@ class PVMonitor:
 
         detected = variance > CLOUD_DETECTION_VARIANCE_THRESHOLD
         if detected:
-            logger.debug("Cloud detected: variance=%.0f (threshold=%d)", variance, CLOUD_DETECTION_VARIANCE_THRESHOLD)
+            logger.debug(
+                "Cloud detected: variance=%.0f (threshold=%d)",
+                variance,
+                CLOUD_DETECTION_VARIANCE_THRESHOLD,
+            )
         return detected
 
     def get_conservative_current(self) -> float:
-        """Get conservative current estimate during cloud conditions.
-
-        Uses the minimum of recent readings to avoid over-allocation
-        during rapid PV fluctuations.
-        """
+        """Get conservative current estimate during cloud conditions."""
         if not self.data.history:
             return 0.0
 
-        min_power = min(s.value for s in self.data.history)
-        # Only use surplus (positive values)
-        surplus_w = max(0.0, min_power)
-        current = surplus_w / self._config.voltage
+        min_surplus = min(s.value for s in self.data.history)
+        current = max(0.0, min_surplus) / self._config.voltage
 
         logger.debug(
-            "Cloud mode: using conservative %.1fA (min %.0fW of %d samples)",
+            "Cloud mode: conservative %.1fA (min %.0fW of %d samples)",
             current,
-            min_power,
+            min_surplus,
             len(self.data.history),
         )
         return current

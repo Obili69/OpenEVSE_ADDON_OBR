@@ -36,8 +36,8 @@ class AppConfig:
         default_factory=lambda: ["openevse/station1", "openevse/station2", "openevse/station3"]
     )
 
-    # PV input
-    pv_grid_export_topic: str = "pv/grid_export_power"
+    # PV input (HA sensor entity ID)
+    pv_sensor_entity_id: str = "sensor.grid_import_power"
 
     # Limits
     total_current_limit: int = DEFAULT_TOTAL_CURRENT_LIMIT
@@ -88,8 +88,8 @@ def _apply_options(config: AppConfig, options: dict) -> None:
         config.mqtt_password = options["mqtt_password"]
     if options.get("evse_topics"):
         config.evse_topics = options["evse_topics"]
-    if options.get("pv_grid_export_topic"):
-        config.pv_grid_export_topic = options["pv_grid_export_topic"]
+    if options.get("pv_sensor_entity_id"):
+        config.pv_sensor_entity_id = options["pv_sensor_entity_id"]
     if options.get("total_current_limit"):
         config.total_current_limit = int(options["total_current_limit"])
     if options.get("voltage"):
@@ -119,8 +119,8 @@ def _apply_env(config: AppConfig) -> None:
     if evse_topics_env:
         config.evse_topics = [t.strip() for t in evse_topics_env.split(",")]
 
-    config.pv_grid_export_topic = os.environ.get(
-        "PV_GRID_EXPORT_TOPIC", config.pv_grid_export_topic
+    config.pv_sensor_entity_id = os.environ.get(
+        "PV_SENSOR_ENTITY_ID", config.pv_sensor_entity_id
     )
     config.total_current_limit = int(
         os.environ.get("TOTAL_CURRENT_LIMIT", config.total_current_limit)

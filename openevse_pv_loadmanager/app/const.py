@@ -27,6 +27,9 @@ EVSE_OFFLINE_TIMEOUT = 90  # seconds without message -> offline
 PV_STALE_TIMEOUT = 60  # seconds without PV data -> stale
 MQTT_RECONNECT_DELAY = 5  # seconds
 
+# HA Supervisor API
+HA_SUPERVISOR_API_URL = "http://supervisor/core/api"
+
 # Overbooking tolerance buffer
 ACTUAL_TOLERANCE = 1.0  # A - station is "satisfied" if actual >= alloc - this
 SLACK_BUFFER = 0.5  # A - keep this buffer when trimming allocation

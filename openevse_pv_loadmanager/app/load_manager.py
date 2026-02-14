@@ -144,6 +144,8 @@ class LoadManager:
 
         while True:
             try:
+                # Poll PV sensor from HA API
+                await self._pv.poll()
                 result = self.compute_allocations()
                 await self.apply_allocations(result)
             except Exception:

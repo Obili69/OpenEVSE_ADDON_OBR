@@ -40,7 +40,7 @@ async def main() -> None:
     mqtt = MQTTClient(config)
     persistence = Persistence()
     evse = EVSEManager(config, mqtt)
-    pv = PVMonitor(config, mqtt)
+    pv = PVMonitor(config)
     lm = LoadManager(config, evse, pv, mqtt, persistence)
     discovery = HADiscoveryPublisher(config, mqtt)
 
@@ -52,7 +52,6 @@ async def main() -> None:
 
     # Setup MQTT subscriptions
     evse.setup_subscriptions()
-    pv.setup_subscriptions()
     lm.setup_subscriptions()
 
     # Shutdown handler

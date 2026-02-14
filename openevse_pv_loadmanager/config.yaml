@@ -1,5 +1,5 @@
 name: "OpenEVSE PV Load Manager"
-version: "1.0.3"
+version: "1.0.4"
 slug: openevse_pv_loadmanager
 description: "PV-aware load management for up to 3 OpenEVSE charging stations with 32A supply limit"
 url: "https://github.com/Obili69/OpenEVSE_ADDON_OBR"
@@ -9,6 +9,7 @@ arch:
   - armv7
 startup: application
 boot: auto
+homeassistant_api: true
 map:
   - type: addon_config
     read_only: true
@@ -21,7 +22,7 @@ options:
     - "openevse/station1"
     - "openevse/station2"
     - "openevse/station3"
-  pv_grid_export_topic: "pv/grid_export_power"
+  pv_sensor_entity_id: "sensor.grid_import_power"
   total_current_limit: 32
   voltage: 230
   hysteresis_threshold: 2.0
@@ -37,7 +38,7 @@ schema:
   mqtt_password: password
   evse_topics:
     - str
-  pv_grid_export_topic: str
+  pv_sensor_entity_id: str
   total_current_limit: "int(6,80)"
   voltage: "int(100,400)"
   hysteresis_threshold: "float(0,20)"
