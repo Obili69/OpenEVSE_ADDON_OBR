@@ -237,11 +237,17 @@ class LoadManager:
                 alloc = allocations[sid]
                 actual = station.actual_current
 
-                if actual < alloc - ACTUAL_TOLERANCE and actual > 0:
+                if not station.is_charging or actual == 0:
+                    # Station not drawing anything — return full allocation
+                    slack += alloc
+                    allocations[sid] = 0
+                elif actual < alloc - ACTUAL_TOLERANCE:
                     unused = alloc - actual - SLACK_BUFFER
                     if unused > 0:
                         slack += unused
                         allocations[sid] = actual + SLACK_BUFFER
+                    else:
+                        hungry_stations.append(sid)
                 else:
                     hungry_stations.append(sid)
 
@@ -292,16 +298,16 @@ class LoadManager:
                     allocations[sid] = min(new_alloc, old_alloc + MAX_RAMP_UP_STEP)
                     self._last_ramp_up_time[sid] = now
 
-        # --- STEP 6: Safety check on actual draw ---
-        total_actual = sum(s.actual_current for s in active_stations)
+        # --- STEP 6: Safety check on total allocation ---
+        total_allocated = sum(allocations.values())
         limit = float(self._config.total_current_limit)
 
-        if total_actual > limit - SAFETY_MARGIN:
-            if total_actual > 0:
-                scale = (limit - SAFETY_MARGIN) / total_actual
+        if total_allocated > limit:
+            if total_allocated > 0:
+                scale = limit / total_allocated
                 logger.warning(
-                    "SAFETY: total actual %.1fA near limit %dA, scaling (factor=%.2f)",
-                    total_actual,
+                    "SAFETY: total allocated %.1fA exceeds limit %dA, scaling (factor=%.2f)",
+                    total_allocated,
                     self._config.total_current_limit,
                     scale,
                 )
@@ -333,8 +339,11 @@ class LoadManager:
                 await self._ha.set_select(sc.override_state_entity, "disabled")
                 logger.info("Station %s: PAUSED", sc.name)
             else:
-                # Set charge rate (select entity) and ensure active
-                await self._ha.set_select(sc.charge_rate_entity, str(amps_rounded))
+                # Set charge rate using correct service based on entity type
+                if sc.charge_rate_entity.startswith("number."):
+                    await self._ha.set_number(sc.charge_rate_entity, amps_rounded)
+                else:
+                    await self._ha.set_select(sc.charge_rate_entity, str(amps_rounded))
                 await self._ha.set_select(sc.override_state_entity, "active")
                 logger.info("Station %s: %dA", sc.name, amps_rounded)
 
