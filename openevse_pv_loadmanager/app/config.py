@@ -11,6 +11,7 @@ from .const import (
     DEFAULT_HYSTERESIS_DELAY,
     DEFAULT_HYSTERESIS_THRESHOLD,
     DEFAULT_MEASUREMENT_INTERVAL,
+    DEFAULT_PHASES,
     DEFAULT_RAMP_UP_DELAY,
     DEFAULT_TOTAL_CURRENT_LIMIT,
     DEFAULT_VOLTAGE,
@@ -32,6 +33,7 @@ class AppConfig:
     pv_sensor_entity_id: str = "sensor.grid_import_power"
     total_current_limit: int = DEFAULT_TOTAL_CURRENT_LIMIT
     voltage: int = DEFAULT_VOLTAGE
+    phases: int = DEFAULT_PHASES
     hysteresis_threshold: float = DEFAULT_HYSTERESIS_THRESHOLD
     hysteresis_delay: float = DEFAULT_HYSTERESIS_DELAY
     ramp_up_delay: float = DEFAULT_RAMP_UP_DELAY
@@ -82,6 +84,8 @@ def _apply_options(config: AppConfig, options: dict) -> None:
         config.total_current_limit = int(options["total_current_limit"])
     if options.get("voltage"):
         config.voltage = int(options["voltage"])
+    if options.get("phases"):
+        config.phases = int(options["phases"])
     if options.get("hysteresis_threshold") is not None:
         config.hysteresis_threshold = float(options["hysteresis_threshold"])
     if options.get("hysteresis_delay") is not None:

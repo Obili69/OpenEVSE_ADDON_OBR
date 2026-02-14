@@ -4,6 +4,7 @@
 DEFAULT_TOTAL_CURRENT_LIMIT = 32  # Amperes
 MIN_STATION_CURRENT = 6  # Below this -> pause
 DEFAULT_VOLTAGE = 230
+DEFAULT_PHASES = 3
 
 # Ramp control
 DEFAULT_RAMP_UP_DELAY = 30  # seconds

@@ -15,19 +15,19 @@ options:
     - name: "roller1"
       charging_current_entity: "sensor.roller1_charging_current"
       charging_status_entity: "sensor.roller1_charging_status"
-      charge_rate_entity: "number.roller1_charge_rate"
+      charge_rate_entity: "select.roller1_charge_rate"
       override_state_entity: "select.roller1_override_state"
       vehicle_connected_entity: "binary_sensor.roller1_vehicle_connected"
     - name: "roller2"
       charging_current_entity: "sensor.roller2_charging_current"
       charging_status_entity: "sensor.roller2_charging_status"
-      charge_rate_entity: "number.roller2_charge_rate"
+      charge_rate_entity: "select.roller2_charge_rate"
       override_state_entity: "select.roller2_override_state"
       vehicle_connected_entity: "binary_sensor.roller2_vehicle_connected"
     - name: "roller3"
       charging_current_entity: "sensor.roller3_charging_current"
       charging_status_entity: "sensor.roller3_charging_status"
-      charge_rate_entity: "number.roller3_charge_rate"
+      charge_rate_entity: "select.roller3_charge_rate"
       override_state_entity: "select.roller3_override_state"
       vehicle_connected_entity: "binary_sensor.roller3_vehicle_connected"
   enable_charging_entity: "switch.openevse_pv_load_manager_enable_charging"
@@ -35,6 +35,7 @@ options:
   pv_sensor_entity_id: "sensor.grid_import_power"
   total_current_limit: 32
   voltage: 230
+  phases: 3
   hysteresis_threshold: 2.0
   hysteresis_delay: 10
   ramp_up_delay: 30
@@ -52,6 +53,7 @@ schema:
   pv_sensor_entity_id: str
   total_current_limit: "int(6,80)"
   voltage: "int(100,400)"
+  phases: "int(1,3)"
   hysteresis_threshold: "float(0,20)"
   hysteresis_delay: "int(0,120)"
   ramp_up_delay: "int(0,300)"

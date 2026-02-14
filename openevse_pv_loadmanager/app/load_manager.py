@@ -182,7 +182,9 @@ class LoadManager:
             logger.warning("PV data stale (%.0fs old)", now - self._pv.last_update)
             return 0.0
 
-        surplus_amps = self._pv.surplus_w / self._config.voltage
+        # Convert watts to per-phase amps: W / (V * phases)
+        watts_per_amp = self._config.voltage * self._config.phases
+        surplus_amps = self._pv.surplus_w / watts_per_amp
 
         # Cloud detection: if high variance, be conservative
         if len(self._pv.history) >= 3:
@@ -191,7 +193,7 @@ class LoadManager:
             variance = sum((v - mean) ** 2 for v in values) / len(values)
             if variance > CLOUD_DETECTION_VARIANCE_THRESHOLD:
                 # Use minimum of recent readings for stability
-                conservative = min(values) / self._config.voltage
+                conservative = min(values) / watts_per_amp
                 logger.debug(
                     "Cloud detected (var=%.0f), using conservative %.1fA",
                     variance, conservative,
@@ -331,8 +333,8 @@ class LoadManager:
                 await self._ha.set_select(sc.override_state_entity, "disabled")
                 logger.info("Station %s: PAUSED", sc.name)
             else:
-                # Set charge rate and ensure active
-                await self._ha.set_number(sc.charge_rate_entity, amps_rounded)
+                # Set charge rate (select entity) and ensure active
+                await self._ha.set_select(sc.charge_rate_entity, str(amps_rounded))
                 await self._ha.set_select(sc.override_state_entity, "active")
                 logger.info("Station %s: %dA", sc.name, amps_rounded)
 
@@ -354,10 +356,10 @@ class LoadManager:
             logger.info("Station %s: DISABLED", sc.name)
 
     async def clear_all_overrides(self) -> None:
-        """Clear overrides on all stations (shutdown cleanup)."""
+        """Disable all stations on shutdown."""
         for sc in self._config.stations:
-            await self._ha.set_select(sc.override_state_entity, "auto")
-            logger.info("Cleared override on %s", sc.name)
+            await self._ha.set_select(sc.override_state_entity, "disabled")
+            logger.info("Disabled %s (shutdown)", sc.name)
 
     def _save_state(self) -> None:
         """Persist current state to disk."""
