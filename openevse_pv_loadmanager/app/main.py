@@ -8,12 +8,9 @@ import signal
 import sys
 
 from .config import load_config
-from .evse_manager import EVSEManager
-from .ha_discovery import HADiscoveryPublisher
+from .ha_client import HAClient
 from .load_manager import LoadManager
-from .mqtt_client import MQTTClient
 from .persistence import Persistence
-from .pv_monitor import PVMonitor
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,29 +27,22 @@ async def main() -> None:
     config = load_config()
     logger.info(
         "Config: %d stations, %dA limit, mode=%s, interval=%ds",
-        len(config.evse_topics),
+        len(config.stations),
         config.total_current_limit,
         config.initial_mode,
         config.measurement_interval,
     )
 
     # Initialize components
-    mqtt = MQTTClient(config)
+    ha = HAClient()
     persistence = Persistence()
-    evse = EVSEManager(config, mqtt)
-    pv = PVMonitor(config)
-    lm = LoadManager(config, evse, pv, mqtt, persistence)
-    discovery = HADiscoveryPublisher(config, mqtt)
+    lm = LoadManager(config, ha, persistence)
 
     # Restore persisted state
     saved = persistence.load()
     if saved:
         lm.restore_state(saved)
         logger.info("Restored persisted state: mode=%s", saved.get("mode"))
-
-    # Setup MQTT subscriptions
-    evse.setup_subscriptions()
-    lm.setup_subscriptions()
 
     # Shutdown handler
     shutdown_event = asyncio.Event()
@@ -68,21 +58,16 @@ async def main() -> None:
     async def shutdown_watcher() -> None:
         await shutdown_event.wait()
         logger.info("Shutting down: clearing overrides")
-        await evse.clear_all_overrides()
-        await mqtt.publish("loadmanager/status", "offline", retain=True)
-        # Allow messages to be sent
+        await lm.clear_all_overrides()
         await asyncio.sleep(1)
-        # Cancel all tasks
         for task in asyncio.all_tasks():
             if task is not asyncio.current_task():
                 task.cancel()
 
-    # Run all tasks
+    # Run
     try:
         await asyncio.gather(
-            mqtt.start(),
             lm.run(),
-            discovery.publish_on_connect(mqtt),
             shutdown_watcher(),
         )
     except asyncio.CancelledError:

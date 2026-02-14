@@ -5,7 +5,7 @@ WORKDIR /opt
 
 COPY app/ /opt/app/
 
-RUN pip install --no-cache-dir aiomqtt aiohttp
+RUN pip install --no-cache-dir aiohttp
 
 ENTRYPOINT []
 CMD ["python3", "-m", "app.main"]

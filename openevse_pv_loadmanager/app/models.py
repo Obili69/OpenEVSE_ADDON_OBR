@@ -2,48 +2,53 @@
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 from enum import Enum
 
 
 class OperationMode(Enum):
-    """Load manager operation modes."""
-
     PV_ONLY = "pv_only"
     PV_PLUS_GRID = "pv_plus_grid"
 
 
 class StationState(Enum):
-    """Charging station states."""
-
     OFFLINE = "offline"
-    IDLE = "idle"  # Connected, not charging
+    IDLE = "idle"
     CHARGING = "charging"
-    PAUSED = "paused"  # Below 6A, temporarily paused
+    PAUSED = "paused"
     ERROR = "error"
     NOT_CONNECTED = "not_connected"
 
 
 @dataclass
-class EVSEState:
-    """State of a single OpenEVSE charging station."""
+class StationConfig:
+    """Configuration for a single charging station."""
+
+    name: str
+    charging_current_entity: str
+    charging_status_entity: str
+    charge_rate_entity: str
+    override_state_entity: str
+    vehicle_connected_entity: str
+
+
+@dataclass
+class StationStatus:
+    """Runtime status of a single charging station."""
 
     station_id: int
-    base_topic: str
-    actual_current: float = 0.0  # From OpenEVSE amp topic (A)
-    pilot_current: float = 0.0  # Pilot signal (A)
-    allocated_current: float = 0.0  # What we set as setpoint (A)
-    session_energy_wh: float = 0.0  # Session energy (Wh)
-    evse_state_code: int = 0  # Raw OpenEVSE state code
+    name: str
+    actual_current: float = 0.0
+    allocated_current: float = 0.0
     state: StationState = StationState.OFFLINE
-    last_seen: float = 0.0  # Timestamp of last MQTT message
-    last_setpoint_change: float = 0.0  # Timestamp of last setpoint change
+    vehicle_connected: bool = False
 
     @property
     def is_active(self) -> bool:
         """Station is eligible for current allocation."""
-        return self.state in (StationState.IDLE, StationState.CHARGING, StationState.PAUSED)
+        return self.vehicle_connected and self.state in (
+            StationState.IDLE, StationState.CHARGING, StationState.PAUSED
+        )
 
     @property
     def is_charging(self) -> bool:
@@ -54,7 +59,7 @@ class EVSEState:
 class PVSample:
     """A single PV power measurement."""
 
-    value: float  # Watts
+    value: float  # Watts surplus
     timestamp: float
 
 
@@ -62,7 +67,7 @@ class PVSample:
 class PVData:
     """PV monitoring data."""
 
-    grid_export_power_w: float = 0.0  # Positive = export/surplus
+    surplus_w: float = 0.0
     last_update: float = 0.0
     history: list[PVSample] = field(default_factory=list)
 
@@ -71,6 +76,6 @@ class PVData:
 class AllocationResult:
     """Result of a load allocation cycle."""
 
-    allocations: dict[int, float]  # station_id -> amperes
+    allocations: dict[int, float]  # station_id -> amps
     total_allocated: float
     mode: OperationMode
