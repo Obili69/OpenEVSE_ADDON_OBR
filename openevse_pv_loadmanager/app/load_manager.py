@@ -9,13 +9,11 @@ from typing import Any
 
 from .config import AppConfig
 from .const import (
-    ACTUAL_TOLERANCE,
     CLOUD_DETECTION_VARIANCE_THRESHOLD,
     CLOUD_DETECTION_WINDOW,
     MAX_RAMP_UP_STEP,
     MIN_STATION_CURRENT,
     PV_STALE_TIMEOUT,
-    SLACK_BUFFER,
 )
 from .ha_client import HAClient
 from .models import (
@@ -226,36 +224,23 @@ class LoadManager:
             s.station_id: equal_share for s in active_stations
         }
 
-        # --- STEP 3: Overbooking - give unused capacity to charging stations ---
-        # Non-charging stations keep their equal share (so they can start anytime).
-        # Their unused capacity is given as bonus to actively charging stations.
-        available_bonus = 0.0
-        hungry_stations: list[int] = []
+        # --- STEP 3: Overbooking ---
+        # All stations keep at least equal_share as setpoint.
+        # Spare capacity (limit - total actual draw) is given as bonus to
+        # charging stations. Self-corrects each cycle as actual draw changes.
+        limit = float(self._config.total_current_limit)
+        total_actual = sum(s.actual_current for s in active_stations)
+        spare = max(0.0, limit - total_actual)
 
-        for station in active_stations:
-            sid = station.station_id
-            actual = station.actual_current
+        hungry_stations = [
+            s.station_id for s in active_stations
+            if s.is_charging and s.actual_current > 0
+        ]
 
-            if not station.is_charging or actual == 0:
-                # Not drawing — its equal share is available as bonus
-                available_bonus += allocations[sid]
-                # Keep allocation unchanged (stays at equal_share)
-            elif actual < allocations[sid] - ACTUAL_TOLERANCE:
-                # Charging but drawing less than allocated — partial bonus
-                unused = allocations[sid] - actual - SLACK_BUFFER
-                if unused > 0:
-                    available_bonus += unused
-                    allocations[sid] = actual + SLACK_BUFFER
-                else:
-                    hungry_stations.append(sid)
-            else:
-                # Charging at or above allocation — hungry
-                hungry_stations.append(sid)
-
-        if available_bonus > 0 and hungry_stations:
-            bonus_per = available_bonus / len(hungry_stations)
+        if spare > 0 and hungry_stations:
+            bonus_per = spare / len(hungry_stations)
             for sid in hungry_stations:
-                allocations[sid] += bonus_per
+                allocations[sid] = min(equal_share + bonus_per, limit)
 
         # --- STEP 4: Per-station constraints ---
         for station in active_stations:
@@ -300,10 +285,10 @@ class LoadManager:
                     allocations[sid] = min(new_alloc, old_alloc + MAX_RAMP_UP_STEP)
                     self._last_ramp_up_time[sid] = now
 
-        # Per-station debug logging
+        # Per-station logging
         for station in active_stations:
             sid = station.station_id
-            logger.debug(
+            logger.info(
                 "  %s: alloc=%.1fA actual=%.1fA state=%s charging=%s",
                 station.name, allocations[sid], station.actual_current,
                 station.state.value, station.is_charging,
