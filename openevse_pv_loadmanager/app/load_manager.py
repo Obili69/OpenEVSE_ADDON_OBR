@@ -14,9 +14,7 @@ from .const import (
     CLOUD_DETECTION_WINDOW,
     MAX_RAMP_UP_STEP,
     MIN_STATION_CURRENT,
-    OVERBOOKING_ITERATIONS,
     PV_STALE_TIMEOUT,
-    SAFETY_MARGIN,
     SLACK_BUFFER,
 )
 from .ha_client import HAClient
@@ -227,34 +225,36 @@ class LoadManager:
             s.station_id: equal_share for s in active_stations
         }
 
-        # --- STEP 3: Overbooking - dynamic reallocation ---
-        for _ in range(OVERBOOKING_ITERATIONS):
-            slack = 0.0
-            hungry_stations: list[int] = []
+        # --- STEP 3: Overbooking - give unused capacity to charging stations ---
+        # Non-charging stations keep their equal share (so they can start anytime).
+        # Their unused capacity is given as bonus to actively charging stations.
+        available_bonus = 0.0
+        hungry_stations: list[int] = []
 
-            for station in active_stations:
-                sid = station.station_id
-                alloc = allocations[sid]
-                actual = station.actual_current
+        for station in active_stations:
+            sid = station.station_id
+            actual = station.actual_current
 
-                if not station.is_charging or actual == 0:
-                    # Station not drawing anything — return full allocation
-                    slack += alloc
-                    allocations[sid] = 0
-                elif actual < alloc - ACTUAL_TOLERANCE:
-                    unused = alloc - actual - SLACK_BUFFER
-                    if unused > 0:
-                        slack += unused
-                        allocations[sid] = actual + SLACK_BUFFER
-                    else:
-                        hungry_stations.append(sid)
+            if not station.is_charging or actual == 0:
+                # Not drawing — its equal share is available as bonus
+                available_bonus += allocations[sid]
+                # Keep allocation unchanged (stays at equal_share)
+            elif actual < allocations[sid] - ACTUAL_TOLERANCE:
+                # Charging but drawing less than allocated — partial bonus
+                unused = allocations[sid] - actual - SLACK_BUFFER
+                if unused > 0:
+                    available_bonus += unused
+                    allocations[sid] = actual + SLACK_BUFFER
                 else:
                     hungry_stations.append(sid)
+            else:
+                # Charging at or above allocation — hungry
+                hungry_stations.append(sid)
 
-            if slack > 0 and hungry_stations:
-                bonus = slack / len(hungry_stations)
-                for sid in hungry_stations:
-                    allocations[sid] += bonus
+        if available_bonus > 0 and hungry_stations:
+            bonus_per = available_bonus / len(hungry_stations)
+            for sid in hungry_stations:
+                allocations[sid] += bonus_per
 
         # --- STEP 4: Per-station constraints ---
         for station in active_stations:
@@ -297,22 +297,6 @@ class LoadManager:
                 else:
                     allocations[sid] = min(new_alloc, old_alloc + MAX_RAMP_UP_STEP)
                     self._last_ramp_up_time[sid] = now
-
-        # --- STEP 6: Safety check on total allocation ---
-        total_allocated = sum(allocations.values())
-        limit = float(self._config.total_current_limit)
-
-        if total_allocated > limit:
-            if total_allocated > 0:
-                scale = limit / total_allocated
-                logger.warning(
-                    "SAFETY: total allocated %.1fA exceeds limit %dA, scaling (factor=%.2f)",
-                    total_allocated,
-                    self._config.total_current_limit,
-                    scale,
-                )
-                for sid in allocations:
-                    allocations[sid] = allocations[sid] * scale
 
         # Update tracking
         total_allocated = sum(allocations.values())
